@@ -1,0 +1,9 @@
+[package]
+name = "jit-demo"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cranelift = "0.133.1"
+cranelift-jit = "0.133.1"
+cranelift-module = "0.133.1"
