@@ -63,6 +63,7 @@ pub enum Expr {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnaryOp {
     Neg,
+    // Meaning:** `!0` becomes `1`, `!5` becomes `0`
     Not,
 }
 
