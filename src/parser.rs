@@ -18,11 +18,11 @@ pub struct Program {
 pub struct Function {
     pub name: String,
     pub params: Vec<String>,
-    pub body: Block,
+    pub body: Body,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Block {
+pub struct Body {
     pub stmts: Vec<Stmt>,
 }
 
@@ -35,7 +35,7 @@ pub enum Stmt {
     Return(Expr),
     If {
         cond: Expr,
-        then: Block,
+        then: Body,
         else_: Option<Box<Stmt>>,
     },
     Expr(Expr),
@@ -115,14 +115,14 @@ fn build_function(pair: Pair<Rule>) -> Function {
     Function { name, params, body }
 }
 
-fn build_block(pair: Pair<Rule>) -> Block {
+fn build_block(pair: Pair<Rule>) -> Body {
     debug_assert!(pair.as_rule() == Rule::block);
     let stmts = pair
         .into_inner()
         .filter(|p| p.as_rule() == Rule::stmt)
         .map(build_stmt)
         .collect();
-    Block { stmts }
+    Body { stmts }
 }
 
 fn build_stmt(pair: Pair<Rule>) -> Stmt {
@@ -180,7 +180,7 @@ fn build_if_stmt(pair: Pair<Rule>) -> Stmt {
 // implementation would add a `Block` variant to `Stmt`; for this minimal
 // language we only support single-statement else blocks, which is enough for
 // `else { return ...; }` style code.
-fn block_last_expr(block: Block) -> Expr {
+fn block_last_expr(block: Body) -> Expr {
     match block.stmts.into_iter().last() {
         Some(Stmt::Return(e)) | Some(Stmt::Expr(e)) => e,
         _ => Expr::Int(0),

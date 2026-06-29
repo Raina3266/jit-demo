@@ -337,6 +337,7 @@ dependencies = [
  "cranelift",
  "cranelift-jit",
  "cranelift-module",
+ "cranelift-native",
  "pest",
  "pest_derive",
 ]
