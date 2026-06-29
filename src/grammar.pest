@@ -1,0 +1,39 @@
+// Grammar for a small, Rust-like language.
+// All values are i64 — there are no type annotations.
+
+WHITESPACE = _{ " " | "\\t" | "\\r" | ("\\n" | "\\r\\n") }
+COMMENT    = _{ "//" ~ (!"\\n" ~ ANY)* }
+
+program  = { SOI ~ function+ ~ EOI }
+
+function = { "fn" ~ ident ~ "(" ~ params? ~ ")" ~ block }
+params   = { ident ~ ("," ~ ident)* }
+
+block = { "{" ~ stmt* ~ "}" }
+
+stmt = { let_stmt | return_stmt | if_stmt | expr_stmt }
+let_stmt    = { "let" ~ ident ~ "=" ~ expr ~ ";" }
+return_stmt = { "return" ~ expr ~ ";" }
+if_stmt     = { "if" ~ expr ~ block ~ ("else" ~ (if_stmt | block))? }
+expr_stmt   = { expr ~ ";" }
+
+expr = { comparison }
+
+comparison = { additive ~ (comp_op ~ additive)? }
+comp_op    = { "==" | "!=" | "<=" | ">=" | "<" | ">" }
+
+additive = { multiplicative ~ (add_op ~ multiplicative)* }
+add_op   = { "+" | "-" }
+
+multiplicative = { unary ~ (mul_op ~ unary)* }
+mul_op         = { "*" | "/" }
+
+unary     = { unary_op ~ unary | primary }
+unary_op  = { "-" | "!" }
+
+primary = { integer | call | ident | "(" ~ expr ~ ")" }
+call    = { ident ~ "(" ~ args? ~ ")" }
+args    = { expr ~ ("," ~ expr)* }
+
+integer = @{ ASCII_DIGIT+ }
+ident   = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
