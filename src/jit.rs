@@ -1,6 +1,5 @@
 use crate::parser::*;
 use cranelift::codegen::Context;
-use cranelift::codegen::ir::BlockArg;
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{DataDescription, Linkage, Module};
@@ -43,8 +42,62 @@ impl Default for JIT {
 
 impl JIT {
     /// Compile a string in the language into machine code.
+    ///
+    /// The string may contain multiple `fn` definitions. All functions are
+    /// compiled; the pointer to the function named `"main"` is returned.
     pub fn compile(&mut self, input: &str) -> Result<*const u8, String> {
-        todo!()
+        let program = parse(input).map_err(|e| format!("{e:?}"))?;
+
+        // First pass: declare every function in the module so that calls
+        // between them (including forward references) resolve.
+        let mut func_ids = Vec::with_capacity(program.functions.len());
+        for f in &program.functions {
+            let mut sig = self.module.make_signature();
+            sig.params = vec![AbiParam::new(types::I64); f.params.len()];
+            sig.returns = vec![AbiParam::new(types::I64)];
+            let id = self
+                .module
+                .declare_function(&f.name, Linkage::Local, &sig)
+                .map_err(|e| format!("declare {}: {e:?}", f.name))?;
+            func_ids.push((id, f));
+        }
+
+        // Second pass: translate each function's body to IR and define it.
+        for (id, f) in &func_ids {
+            self.translate(f)?;
+            self.module
+                .define_function(*id, &mut self.ctx)
+                .map_err(|e| format!("define {}: {e:?}", f.name))?;
+            self.module.clear_context(&mut self.ctx);
+        }
+
+        // Finalize: perform relocations and make the code executable.
+        self.module
+            .finalize_definitions()
+            .map_err(|e| format!("finalize: {e:?}"))?;
+
+        // Hand back the address of `main`.
+        let main_id = func_ids
+            .iter()
+            .find(|(_, f)| f.name == "main")
+            .map(|(id, _)| *id)
+            .ok_or_else(|| "no `main` function found".to_string())?;
+        Ok(self.module.get_finalized_function(main_id))
+    }
+
+    /// Look up a previously-compiled function by name and return its address.
+    pub fn get_function(&self, name: &str) -> Result<*const u8, String> {
+        let id = self
+            .module
+            .get_name(name)
+            .ok_or_else(|| format!("function `{name}` not found"))?;
+        let func_id = match id {
+            cranelift_module::FuncOrDataId::Func(f) => f,
+            cranelift_module::FuncOrDataId::Data(_) => {
+                return Err(format!("`{name}` is data, not a function"));
+            }
+        };
+        Ok(self.module.get_finalized_function(func_id))
     }
 
     // Translate from toy-language AST nodes into Cranelift IR.
@@ -72,6 +125,14 @@ impl JIT {
             trans.translate_stmt(stmt);
         }
 
+        // If the body didn't end in `return`, fall back to `return 0` so the
+        // function's `-> i64` signature is always satisfied.
+        let ends_in_return = matches!(f.body.stmts.last(), Some(Stmt::Return(_)));
+        if !ends_in_return {
+            let zero = trans.builder.ins().iconst(int, 0);
+            trans.builder.ins().return_(&[zero]);
+        }
+
         // Tell the builder we're done with this function.
         trans.builder.finalize();
         Ok(())
@@ -95,8 +156,6 @@ fn declare_variables(
         builder.def_var(var, val);
     }
 
-    // one output param (in our function we don't have return variable)
-
     // several param in body
     for stmt in stmts {
         declare_variables_in_stmt(int, builder, &mut variables, stmt);
@@ -104,7 +163,9 @@ fn declare_variables(
     variables
 }
 
-/// Declare a single variable declaration.
+/// Declare a single variable declaration. `declare_var` allocates a fresh
+/// `Variable` internally and returns it; we cache it by name so re-declaring
+/// the same name reuses the same handle.
 fn declare_variable(
     int: types::Type,
     builder: &mut FunctionBuilder,
@@ -123,10 +184,14 @@ fn declare_variables_in_stmt(
     stmt: &Stmt,
 ) {
     match stmt {
-        Stmt::Let { name, value } => {
+        Stmt::Let { name, value: _ } => {
             declare_variable(int, builder, variables, name);
         }
-        Stmt::If { cond, then, else_ } => {
+        Stmt::If {
+            cond: _,
+            then,
+            else_,
+        } => {
             for stmt in then.stmts.iter() {
                 declare_variables_in_stmt(int, builder, variables, stmt);
             }

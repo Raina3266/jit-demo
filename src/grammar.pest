@@ -1,8 +1,8 @@
 // Grammar for a small, Rust-like language.
 // All values are i64 — there are no type annotations.
 
-WHITESPACE = _{ " " | "\\t" | "\\r" | ("\\n" | "\\r\\n") }
-COMMENT    = _{ "//" ~ (!"\\n" ~ ANY)* }
+WHITESPACE = _{ " " | "\t" | "\r" | ("\n" | "\r\n") }
+COMMENT    = _{ "//" ~ (!"\n" ~ ANY)* }
 
 program  = { SOI ~ function+ ~ EOI }
 
